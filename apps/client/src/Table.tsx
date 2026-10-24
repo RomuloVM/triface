@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { card, cardName, legalPlacements, type Move, type PlayerView } from '@triface/engine';
+import { card, cardName, legalPlacements, placementOptions, vkey, type Move, type PlayerView } from '@triface/engine';
 import { Board } from './Board.tsx';
 import { CardIcon } from './CardView.tsx';
+import { explain } from './explain.ts';
 
 interface Props {
   view: PlayerView;
@@ -20,6 +21,9 @@ interface Props {
 /** The game table as one player sees it. */
 export function Table({ view, onMove, error, setError, offline, gate, sidebar, onQuit }: Props) {
   const [selected, setSelected] = useState<number | null>(null);
+  // The spot under the pointer, and a blocked spot that was tapped to see why.
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [pinned, setPinned] = useState<string | null>(null);
   const { phase } = view;
   const turnPlayer = view.players[view.current]!;
   const myTurn = turnPlayer.id === view.me;
@@ -28,11 +32,18 @@ export function Table({ view, onMove, error, setError, offline, gate, sidebar, o
 
   // Drop a stale selection whenever the turn or phase moves on.
   useEffect(() => setSelected(null), [view.current, phase.kind, view.board.length]);
+  useEffect(() => {
+    setHovered(null);
+    setPinned(null);
+  }, [selected, view.board.length]);
 
-  const spots = useMemo(
-    () => (selected === null ? [] : legalPlacements(view.board, selected, radius)),
+  const options = useMemo(
+    () => (selected === null ? [] : placementOptions(view.board, selected, radius)),
     [view.board, selected, radius],
   );
+  const focus = hovered ?? pinned;
+  const focused = options.find((o) => vkey(o.at) === focus);
+  const hint = focused && selected !== null ? explain(view.board, selected, focused, view.players.length) : null;
   const playable = useMemo(
     () => new Set(hand.filter((id) => legalPlacements(view.board, id, radius).length > 0)),
     [view.board, hand, radius],
@@ -53,6 +64,11 @@ export function Table({ view, onMove, error, setError, offline, gate, sidebar, o
 
   const cannotDraw = view.deckCount + view.discard.length === 0;
   let prompt = 'Pick a card, then click a highlighted spot.';
+  if (selected !== null && phase.kind === 'play') {
+    prompt = options.some((o) => !o.check.ok)
+      ? "Click a highlighted spot. Gray spots don't fit: point at one to see why."
+      : 'Click a highlighted spot.';
+  }
   if (phase.kind === 'drawn') prompt = 'You drew a playable card. Place it or keep it.';
   if (phase.kind === 'comboDiscard') prompt = 'Combo! Click a card to discard it, or skip.';
   if (phase.kind === 'play' && playable.size === 0) {
@@ -99,8 +115,14 @@ export function Table({ view, onMove, error, setError, offline, gate, sidebar, o
           board={view.board}
           radius={radius}
           selected={gate ? null : selected}
-          spots={spots}
-          onPlace={(at) => selected !== null && send({ type: 'place', cardId: selected, at })}
+          options={options}
+          focus={focus}
+          onFocus={setHovered}
+          onPick={(option) => {
+            if (selected === null) return;
+            if (option.check.ok) return send({ type: 'place', cardId: selected, at: option.at });
+            setPinned(vkey(option.at));
+          }}
         />
       </section>
 
@@ -137,7 +159,10 @@ export function Table({ view, onMove, error, setError, offline, gate, sidebar, o
                 <span className="muted">Waiting for {turnPlayer.name}…</span>
               )}
             </div>
-            {error && <p className="error">{error}</p>}
+            {/* Always rendered, so the board doesn't jump when a hint appears. */}
+            <p className={hint && focused?.check.ok ? 'hint' : 'hint error'} aria-live="polite">
+              {hint ?? error}
+            </p>
             <div className="hand">
               {hand.map((id) => (
                 <button

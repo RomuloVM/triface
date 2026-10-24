@@ -4,6 +4,7 @@ import {
   TRIANGLE_SURFACE,
   checkPlacement,
   legalPlacements,
+  placementOptions,
   openSurfaces,
   triangleKeys,
   type Placement,
@@ -72,5 +73,25 @@ describe('placement', () => {
     expect(check.ok && check.covers).toHaveLength(2);
     // Matching only one of the two surfaces is not enough.
     expect(checkPlacement(board, id('red', 3, 'star'), { a: 0, b: 1 }, R).ok).toBe(false);
+  });
+
+  it('explains blocked spots surface by surface', () => {
+    // A gold 1 with a green 2 covering its face: the green's side is open, but
+    // the spot that covers it would also cover half of the gold's side.
+    const board: Placement[] = [
+      { cardId: id('gold', 1, 'block'), at: O },
+      { cardId: id('green', 2, 'star'), at: { a: -1, b: 0 } },
+    ];
+    const options = placementOptions(board, id('blue', 2, 'block'), R);
+    const below = options.find((o) => o.at.a === 0 && o.at.b === -1)!;
+    expect(below.check).toEqual({ ok: false, reason: 'partial' });
+    expect(below.touches).toEqual(
+      expect.arrayContaining([
+        { ref: { placement: 1, surface: 'side' }, status: 'match' },
+        { ref: { placement: 0, surface: 'side' }, status: 'partial' },
+      ]),
+    );
+    const legal = options.filter((o) => o.check.ok).map((o) => o.at);
+    expect(legal).toEqual(legalPlacements(board, id('blue', 2, 'block'), R));
   });
 });

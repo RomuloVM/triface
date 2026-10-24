@@ -210,6 +210,57 @@ button.small {
   animation: pulse 1.2s ease-in-out infinite alternate;
 }
 
+.spot-blocked {
+  fill: rgba(154, 160, 200, 0.06);
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 4;
+  opacity: 0.7;
+}
+
+.spot.blocked {
+  cursor: help;
+}
+
+.spot:focus {
+  outline: none;
+}
+
+.touch {
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+.touch-ok {
+  fill: rgba(74, 222, 128, 0.25);
+  stroke: #4ade80;
+}
+
+.touch-bad {
+  fill: rgba(255, 122, 128, 0.3);
+  stroke: var(--danger);
+}
+
+.reach {
+  fill: none;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.reach-ok {
+  stroke: var(--accent);
+}
+
+.reach-bad {
+  stroke: var(--danger);
+}
+
+.hint {
+  margin: 6px 0 0;
+  min-height: 1.3em;
+  color: var(--muted);
+}
+
 @keyframes pulse {
   to {
     fill: rgba(110, 168, 255, 0.35);
