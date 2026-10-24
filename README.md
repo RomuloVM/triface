@@ -3,6 +3,8 @@
 A browser card game where hexagonal cards look like cubes and stack in pseudo-3D. Match a card's
 **color** on the top, its **number** on the side or its **shape** on the face, and be the first to empty your hand.
 
+**▶ Play now: https://romulovm.github.io/triface/** (pass-the-device on one screen for now)
+
 Full rules: [RULES.md](RULES.md)
 
 > Inspired by **STACCS** by Sticcy. Triface is an independent game with its own rules and art and is not
@@ -13,7 +15,8 @@ Full rules: [RULES.md](RULES.md)
 - [x] Rules engine with tests (`packages/engine`)
 - [x] Pass-the-device prototype in the browser (`apps/client`)
 - [ ] Online play, peer-to-peer (no server)
-- [ ] GitHub Pages deploy and a single-file download build
+- [x] GitHub Pages deploy (tests run on every push)
+- [ ] Single-file download build
 
 ## Development
 
