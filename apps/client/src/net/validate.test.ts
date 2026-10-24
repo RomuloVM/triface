@@ -20,7 +20,7 @@ describe('parseToHost', () => {
       { t: 'hello', token: 'not-a-token', name: 'x' },
       { t: 'hello', token: TOKEN, name: 'x'.repeat(500) },
       { t: 'move', move: { type: 'place', cardId: 3 } },
-      { t: 'move', move: { type: 'place', cardId: 64, at: { a: 0, b: 0 } } },
+      { t: 'move', move: { type: 'place', cardId: 144, at: { a: 0, b: 0 } } },
       { t: 'move', move: { type: 'place', cardId: 1.5, at: { a: 0, b: 0 } } },
       { t: 'move', move: { type: 'place', cardId: 1, at: { a: 0.5, b: 0 } } },
       { t: 'move', move: { type: 'teleport' } },
@@ -35,6 +35,14 @@ describe('parseMove', () => {
   it('keeps only the fields each move needs', () => {
     expect(parseMove({ type: 'draw', cardId: 5 })).toEqual({ type: 'draw' });
     expect(parseMove({ type: 'discard', cardId: 5 })).toEqual({ type: 'discard', cardId: 5 });
+    expect(parseMove({ type: 'endTurn', x: 1 })).toEqual({ type: 'endTurn' });
+    expect(parseMove({ type: 'lastCard' })).toEqual({ type: 'lastCard' });
+  });
+
+  it('accepts cards from a second deck but nothing beyond it', () => {
+    expect(parseMove({ type: 'discard', cardId: 143 })).toEqual({ type: 'discard', cardId: 143 });
+    expect(parseMove({ type: 'discard', cardId: 144 })).toBeNull();
+    expect(parseMove({ type: 'pass' })).toBeNull();
   });
 });
 
@@ -52,7 +60,7 @@ describe('parseToGuest', () => {
   it('accepts a lobby and rejects bad seats', () => {
     expect(parseToGuest({ t: 'lobby', seats: [seat], you: seat.id })).toEqual({ t: 'lobby', seats: [seat], you: seat.id });
     expect(parseToGuest({ t: 'lobby', seats: [{ ...seat, id: 'x' }], you: seat.id })).toBeNull();
-    expect(parseToGuest({ t: 'lobby', seats: Array(7).fill(seat), you: seat.id })).toBeNull();
+    expect(parseToGuest({ t: 'lobby', seats: Array(11).fill(seat), you: seat.id })).toBeNull();
   });
 
   it('rejects unknown and malformed messages', () => {

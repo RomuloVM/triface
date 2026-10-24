@@ -40,7 +40,8 @@ export class HostSession {
     hostName: string,
     snapshot?: HostSnapshot | null,
   ) {
-    if (snapshot && snapshot.hostToken === hostToken) {
+    // Saved games from an older version of the rules can't be resumed.
+    if (snapshot && snapshot.hostToken === hostToken && (snapshot.state === null || 'turn' in snapshot.state)) {
       this.seats = snapshot.seats.map((s) => ({ ...s, online: s.host }));
       this.tokens = new Map(Object.entries(snapshot.tokens));
       this.banned = new Set(snapshot.banned);

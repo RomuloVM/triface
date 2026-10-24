@@ -8,7 +8,8 @@ import type { Outgoing, Seat, ToHost } from './protocol.ts';
 import { parseToGuest, parseToHost } from './validate.ts';
 
 /** Shared by everyone running Triface; rooms are separated by their secret. */
-const APP_ID = 'triface-game-romulovm-v1';
+// Bump when the rules or messages change, so old and new versions never share a room.
+const APP_ID = 'triface-game-romulovm-v2';
 
 /** The host's game, saved in its own browser so a reload resumes it. */
 export const hostKey = (secret: string) => `triface:host:${secret}`;

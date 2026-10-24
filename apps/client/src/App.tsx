@@ -124,7 +124,7 @@ function Home({ name, setName, onHost, onJoin, onHotseat }: HomeProps) {
   return (
     <main className="setup">
       <h1>Triface</h1>
-      <p className="muted">Stack cube cards by color, number and shape. 2–6 players.</p>
+      <p className="muted">Stack cube cards by color, number and shape. 2–10 players.</p>
 
       <label className="field">
         <span>Your name</span>

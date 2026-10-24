@@ -1,4 +1,4 @@
-import { DECK, MAX_PLAYERS, type Move } from '@triface/engine';
+import { MAX_CARD_ID, MAX_PLAYERS, type Move } from '@triface/engine';
 import type { Seat, ToGuest, ToHost } from './protocol.ts';
 
 /*
@@ -29,15 +29,15 @@ export function parseMove(x: unknown): Move | null {
   switch (x.type) {
     case 'place': {
       const at = x.at;
-      if (!isInt(x.cardId, 0, DECK.length - 1) || !isObj(at)) return null;
+      if (!isInt(x.cardId, 0, MAX_CARD_ID) || !isObj(at)) return null;
       if (!isInt(at.a, -50, 50) || !isInt(at.b, -50, 50)) return null;
       return { type: 'place', cardId: x.cardId, at: { a: at.a, b: at.b } };
     }
     case 'discard':
-      return isInt(x.cardId, 0, DECK.length - 1) ? { type: 'discard', cardId: x.cardId } : null;
+      return isInt(x.cardId, 0, MAX_CARD_ID) ? { type: 'discard', cardId: x.cardId } : null;
     case 'draw':
-    case 'pass':
-    case 'skipDiscard':
+    case 'endTurn':
+    case 'lastCard':
     case 'nextRound':
       return { type: x.type };
     default:

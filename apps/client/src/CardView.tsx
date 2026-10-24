@@ -1,4 +1,4 @@
-import { DIRS, card, toPixel, type Color, type Shape, type Vec } from '@triface/engine';
+import { DIRS, card, toPixel, type Color, type Shape, type Special, type Vec } from '@triface/engine';
 
 const SHADES: Record<Color, { top: string; side: string; face: string }> = {
   red: { top: '#ff8a8f', side: '#e5484d', face: '#b3343a' },
@@ -6,6 +6,28 @@ const SHADES: Record<Color, { top: string; side: string; face: string }> = {
   green: { top: '#7fd6a8', side: '#30a46c', face: '#1f7a4f' },
   gold: { top: '#ffd27a', side: '#f5a524', face: '#c2800f' },
 };
+
+/** Blank surfaces: silver for a Mirror's side and face, slate for a Bridge. */
+const MIRROR = { side: '#c3cbe6', face: '#8f99bf' };
+const BRIDGE = { top: '#b9bcdc', side: '#8a8eb9', face: '#676b98' };
+
+/** Glyph for a blank surface: shine lines on a Mirror, an arch on a Bridge. */
+function BlankGlyph({ special }: { special: Special }) {
+  if (special === 'mirror') {
+    return (
+      <g stroke="white" strokeLinecap="round" opacity={0.85}>
+        <line x1={22} y1={62} x2={62} y2={22} strokeWidth={10} />
+        <line x1={46} y1={80} x2={80} y2={46} strokeWidth={6} />
+      </g>
+    );
+  }
+  return (
+    <>
+      <path d="M16 78 Q50 6 84 78" fill="none" stroke="rgba(0,0,0,0.35)" strokeWidth={17} strokeLinecap="round" />
+      <path d="M16 78 Q50 6 84 78" fill="none" stroke="white" strokeWidth={11} strokeLinecap="round" />
+    </>
+  );
+}
 
 // DIRS indexes: 0=30°, 1=90°, 2=150°, 3=210°, 4=270°, 5=330°.
 const D30 = DIRS[0]!;
@@ -50,7 +72,8 @@ interface Props {
 /** A card drawn as an isometric cube: colored top, numbered side, shaped face. */
 export function CardView({ cardId, at, size, opacity = 1 }: Props) {
   const c = card(cardId);
-  const shade = SHADES[c.color];
+  const shade =
+    c.special === 'bridge' ? BRIDGE : c.special === 'mirror' ? { ...SHADES[c.color!], ...MIRROR } : SHADES[c.color!];
   const center = toPixel(at, size);
   const pt = (d: { a: number; b: number }) => {
     const p = toPixel(d, size);
@@ -78,23 +101,27 @@ export function CardView({ cardId, at, size, opacity = 1 }: Props) {
         <rect x={30} y={30} width={40} height={40} fill="white" opacity={0.35} />
       </g>
       <g transform={surface(O, D30, D270)}>
-        <text
-          x={50}
-          y={52}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fontSize={70}
-          fontWeight={800}
-          fill="white"
-          stroke="rgba(0,0,0,0.35)"
-          strokeWidth={3}
-          fontFamily="system-ui, sans-serif"
-        >
-          {c.num}
-        </text>
+        {c.num === null ? (
+          <BlankGlyph special={c.special!} />
+        ) : (
+          <text
+            x={50}
+            y={52}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={70}
+            fontWeight={800}
+            fill="white"
+            stroke="rgba(0,0,0,0.35)"
+            strokeWidth={3}
+            fontFamily="system-ui, sans-serif"
+          >
+            {c.num}
+          </text>
+        )}
       </g>
       <g transform={surface(D150, D330, D270)}>
-        <ShapeGlyph shape={c.shape} />
+        {c.shape ? <ShapeGlyph shape={c.shape} /> : <BlankGlyph special={c.special!} />}
       </g>
     </g>
   );

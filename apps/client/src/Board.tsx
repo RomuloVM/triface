@@ -3,12 +3,12 @@ import {
   toPixel,
   vkey,
   type Placement,
-  type PlacementOption,
   type Surface,
   type SurfaceTouch,
   type Vec,
 } from '@triface/engine';
 import { CardView } from './CardView.tsx';
+import type { Spot } from './explain.ts';
 
 const SIZE = 30;
 
@@ -20,12 +20,12 @@ interface Props {
   radius: number;
   /** Card being placed, and every spot it might try, legal or not. */
   selected: number | null;
-  options: PlacementOption[];
+  options: Spot[];
   /** The spot being looked at (hovered, or a blocked spot that was tapped). */
   focus: string | null;
   /** Pointer or keyboard focus entering (key) or leaving (null) a spot. */
   onFocus: (key: string | null) => void;
-  onPick: (option: PlacementOption) => void;
+  onPick: (option: Spot) => void;
 }
 
 function points(center: Vec, corners: Vec[], scale = 1): string {
@@ -77,7 +77,7 @@ export function Board({ board, radius, selected, options, focus, onFocus, onPick
       {selected !== null &&
         shown.map((option) => {
           const key = vkey(option.at);
-          const ok = option.check.ok;
+          const ok = option.allowed;
           const c = toPixel(option.at, SIZE);
           const look = () => onFocus(key);
           return (
@@ -109,7 +109,7 @@ export function Board({ board, radius, selected, options, focus, onFocus, onPick
             <SurfaceMark key={`${t.ref.placement}:${t.ref.surface}`} board={board} touch={t} />
           ))}
           <polygon
-            className={focused.check.ok ? 'reach reach-ok' : 'reach reach-bad'}
+            className={focused.allowed ? 'reach reach-ok' : 'reach reach-bad'}
             points={points(focused.at, [...DIRS])}
           />
         </g>

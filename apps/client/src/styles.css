@@ -149,10 +149,63 @@ button.small {
 
 .side {
   grid-area: side;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   background: var(--panel);
   border-right: 1px solid var(--line);
   padding: 8px 16px 16px;
   overflow-y: auto;
+}
+
+.side > button {
+  align-self: flex-start;
+}
+
+/* Pinned to the bottom-left corner of the game screen, even when the panel scrolls. */
+.side-credit {
+  position: sticky;
+  bottom: -16px;
+  margin: auto -16px -16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.direction {
+  display: inline-block;
+  color: var(--accent);
+  font-size: 1rem;
+  transition: transform 0.5s ease;
+}
+
+.direction.reversed {
+  transform: rotate(180deg);
+}
+
+.badge {
+  white-space: nowrap;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #ffd27a;
+  color: #2b1d00;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+button.last-card {
+  margin-left: auto;
+  background: #ffd27a;
+  color: #2b1d00;
+}
+
+button.last-card.called {
+  background: transparent;
+  color: #ffd27a;
+  border: 1px solid #ffd27a;
 }
 
 .players {
@@ -163,9 +216,14 @@ button.small {
 
 .players li {
   display: flex;
+  gap: 8px;
   justify-content: space-between;
   padding: 6px 8px;
   border-radius: 6px;
+}
+
+.players li > .muted {
+  white-space: nowrap;
 }
 
 .players li.current {

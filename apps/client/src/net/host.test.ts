@@ -48,8 +48,9 @@ describe('HostSession lobby', () => {
 
   it('turns players away when the table is full', () => {
     const host = new HostSession('H', 'Host');
-    for (const t of ['A', 'B', 'C', 'D', 'E']) host.hello(`peer-${t}`, hello(t));
-    expect(to(host.hello('peer-F', hello('F')), 'peer-F')).toEqual({ t: 'rejected', reason: 'This table is full.' });
+    for (const t of 'ABCDEFGIJ') host.hello(`peer-${t}`, hello(t)); // 'H' is the host's token
+    expect(host.seats).toHaveLength(10);
+    expect(to(host.hello('peer-K', hello('K')), 'peer-K')).toEqual({ t: 'rejected', reason: 'This table is full.' });
   });
 
   it('needs two players to start', () => {

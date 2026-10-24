@@ -1,6 +1,7 @@
 import {
   card,
   cardName,
+  placementPower,
   type Card,
   type Placement,
   type PlacementOption,
@@ -23,7 +24,7 @@ function power(shape: Shape, players: number): string {
     case 'ring':
       return players === 2 ? 'Ring: your opponent is skipped.' : 'Ring: play reverses.';
     case 'spike':
-      return 'Spike: every opponent draws 1.';
+      return 'Spike: the next player must answer with a Spike or take the cards.';
     case 'block':
       return 'Block: the next player is skipped.';
     case 'star':
@@ -31,20 +32,33 @@ function power(shape: Shape, players: number): string {
   }
 }
 
+/** Why a covered surface matched: its attribute, or a blank surface on either card. */
+function matchedBy(board: readonly Placement[], cardId: number, ref: SurfaceRef): string {
+  const placed = card(cardId);
+  const covered = card(board[ref.placement]!.cardId);
+  const blank = (c: Card) => c.special === 'bridge' || (c.special === 'mirror' && ref.surface !== 'top');
+  return blank(placed) || blank(covered) ? 'blank matches anything' : MATCH[ref.surface];
+}
+
 const surfaceOf = (board: readonly Placement[], ref: SurfaceRef) =>
   `the ${ref.surface} of ${cardName(card(board[ref.placement]!.cardId))}`;
 
+/** A board spot for the selected card, with any rule of the turn that rules it out. */
+export interface Spot extends PlacementOption {
+  /** Why the turn so far forbids this spot, even though the board allows it. */
+  rule: string | null;
+  allowed: boolean;
+}
+
 /** One sentence on what placing a card at this spot would do, or why it can't go there. */
-export function explain(
-  board: readonly Placement[],
-  cardId: number,
-  option: PlacementOption,
-  players: number,
-): string {
-  const { check, touches } = option;
+export function explain(board: readonly Placement[], cardId: number, spot: Spot, players: number): string {
+  const { check, touches } = spot;
+  if (spot.rule) return `Can't go here: ${spot.rule}`;
   if (check.ok) {
-    const parts = touches.map((t) => `${surfaceOf(board, t.ref)} (${MATCH[t.ref.surface]})`);
-    const face = touches.some((t) => t.ref.surface === 'face') ? ` ${power(card(cardId).shape, players)}` : '';
+    const parts = touches.map((t) => `${surfaceOf(board, t.ref)} (${matchedBy(board, cardId, t.ref)})`);
+    const shape = placementPower(board, cardId, check.covers);
+    const mirrored = card(cardId).special === 'mirror' ? 'Mirror copies ' : '';
+    const face = shape ? ` ${mirrored}${power(shape, players)}` : '';
     if (parts.length === 1) return `Covers ${parts[0]}.${face}`;
     return `Combo! Covers ${parts.join(' and ')}, so you may discard a card.${face}`;
   }
