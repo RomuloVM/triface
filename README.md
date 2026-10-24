@@ -3,7 +3,11 @@
 A browser card game where hexagonal cards look like cubes and stack in pseudo-3D. Match a card's
 **color** on the top, its **number** on the side or its **shape** on the face, and be the first to empty your hand.
 
-**▶ Play now: https://romulovm.github.io/triface/** (pass-the-device on one screen for now)
+**▶ Play now: https://romulovm.github.io/triface/**
+
+Enter your name, click **Host a game** and send your friends the link. They can also type the 5-letter room
+code. There are no accounts and no server: browsers connect to each other directly. You can also play on one
+shared screen with **Pass-the-device game**.
 
 Full rules: [RULES.md](RULES.md)
 
@@ -14,7 +18,7 @@ Full rules: [RULES.md](RULES.md)
 
 - [x] Rules engine with tests (`packages/engine`)
 - [x] Pass-the-device prototype in the browser (`apps/client`)
-- [ ] Online play, peer-to-peer (no server)
+- [x] Online play, peer-to-peer (no server)
 - [x] GitHub Pages deploy (tests run on every push)
 - [ ] Single-file download build
 
@@ -37,6 +41,20 @@ packages/engine   Pure TypeScript rules: board geometry, cards, turns, scoring. 
 apps/client       React + SVG front end.
 RULES.md          The rules, which the engine implements.
 ```
+
+### How online play works
+
+The host's browser runs the game. It checks every move with the engine and sends each player only their
+own view, so other players' hands never reach your browser. Guests send their moves to the host.
+[Trystero](https://github.com/dmotz/trystero) connects the browsers over WebRTC, using public Nostr relays
+only to find each other. See [`apps/client/src/net`](apps/client/src/net).
+
+- **Reloading is safe.** Each tab keeps a player token, so a guest who reloads gets their seat back. The
+  host's game is saved in their browser, so a host reload resumes the game.
+- **If the host closes their tab, the game pauses** until they come back.
+- **Some strict networks**, like some office, school or mobile networks, block direct connections. Fixing that
+  needs a relay server (called a TURN server), which this project doesn't have.
+- The host could read everyone's hands with developer tools. Play with friends.
 
 ### How the board works
 
