@@ -1,0 +1,16 @@
+{
+  "name": "triface",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "npm run dev -w @triface/client",
+    "build": "npm run build -w @triface/client",
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/engine && tsc -p apps/client"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  }
+}
