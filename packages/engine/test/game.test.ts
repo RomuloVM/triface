@@ -168,7 +168,21 @@ describe('combos and round end', () => {
   });
 });
 
+describe('untrusted input', () => {
+  it('rejects unknown move types', () => {
+    const s = createGame(PLAYERS, 1);
+    const r = applyMove(s, s.players[s.current]!.id, { type: 'teleport' } as unknown as Move);
+    expect(r).toEqual({ ok: false, error: 'Unknown move.' });
+  });
+});
+
 describe('player view', () => {
+  it('only tells the drawing player which card they drew', () => {
+    const drawn = play(scenario([filler, filler, filler], [id('red', 2, 'block')]), 'p1', { type: 'draw' });
+    expect(playerView(drawn, 'p1').phase).toEqual({ kind: 'drawn', cardId: id('red', 2, 'block') });
+    expect(playerView(drawn, 'p2').phase).toEqual({ kind: 'drawn' });
+  });
+
   it('hides other hands and the deck order', () => {
     const s = createGame(PLAYERS, 7);
     const view = playerView(s, 'p2');
@@ -211,5 +225,5 @@ describe('random play', () => {
       }
       expect(s.phase.kind).toBe('gameOver');
     }
-  });
+  }, 60_000); // 20 full matches per player count
 });

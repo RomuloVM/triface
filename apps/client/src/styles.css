@@ -102,11 +102,14 @@ input {
   color: var(--muted);
 }
 
-.code-input {
-  width: 8ch;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  font-weight: 700;
+.link-input {
+  flex: 1;
+  min-width: 0;
+}
+
+button.small {
+  padding: 2px 8px;
+  font-size: 0.8rem;
 }
 
 .share {
@@ -119,11 +122,6 @@ input {
   flex: 1;
   min-width: 0;
   font-size: 0.85rem;
-}
-
-.code {
-  font-size: 1.3rem;
-  letter-spacing: 0.15em;
 }
 
 .offline {

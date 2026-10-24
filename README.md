@@ -5,8 +5,8 @@ A browser card game where hexagonal cards look like cubes and stack in pseudo-3D
 
 **▶ Play now: https://romulovm.github.io/triface/**
 
-Enter your name, click **Host a game** and send your friends the link. They can also type the 5-letter room
-code. There are no accounts and no server: browsers connect to each other directly. You can also play on one
+Enter your name, click **Host a game** and send your friends the invite link. Only people with the link can
+join. There are no accounts and no server: browsers connect to each other directly. You can also play on one
 shared screen with **Pass-the-device game**.
 
 Full rules: [RULES.md](RULES.md)
@@ -54,7 +54,22 @@ only to find each other. See [`apps/client/src/net`](apps/client/src/net).
 - **If the host closes their tab, the game pauses** until they come back.
 - **Some strict networks**, like some office, school or mobile networks, block direct connections. Fixing that
   needs a relay server (called a TURN server), which this project doesn't have.
-- The host could read everyone's hands with developer tools. Play with friends.
+
+### Security
+
+- **Private rooms.** An invite link carries a random 128-bit room secret after the `#`, so browsers never
+  send it to a web server. The secret is the room's ID and the password for its connection setup, so
+  people without the link can't find the room, join it, or read players' connection details.
+- **Signed host.** The link also carries the host's public key. The host signs every message for one specific
+  recipient, and guests ignore anything that isn't signed by that key, so no one else can impersonate the host
+  or replay its messages to another player.
+- **Secret tokens stay secret.** Each player has a public ID for display and a secret token that proves who
+  they are when they reconnect. A guest sends its token only to a peer that has proved it's the host, and the
+  host never sends tokens to anyone.
+- **Untrusted input is checked.** The host validates every message before it reaches the rules engine,
+  allows one seat per connection, and can remove players from the lobby.
+- **Not protected:** the host's browser holds every hand, so a technical host could peek, and WebRTC shows
+  each player's IP address to the other players in the room. Play with people you trust.
 
 ### How the board works
 

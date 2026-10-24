@@ -9,24 +9,26 @@ import {
   type Move,
 } from '@triface/engine';
 import { Table } from './Table.tsx';
-import { isRoomCode, randomCode, randomToken } from './net/protocol.ts';
+import { generateHostKeys, inviteFragment, parseInvite, randomSecret, type Invite } from './net/crypto.ts';
 import type { HostSnapshot } from './net/host.ts';
-import { hostKey, useOnline, type Identity } from './net/useOnline.ts';
+import { randomToken } from './net/protocol.ts';
+import { hostKey, signingKey, useOnline, type Identity } from './net/useOnline.ts';
+import { cleanName } from './net/validate.ts';
 import { load, remove, save } from './storage.ts';
 
-type Screen = { kind: 'home' } | { kind: 'hotseat' } | { kind: 'online'; code: string; host: boolean };
+type Screen = { kind: 'home' } | { kind: 'hotseat' } | { kind: 'online'; invite: Invite; host: boolean };
 
-function roomFromUrl(): string | null {
-  const code = new URLSearchParams(location.search).get('room')?.toUpperCase() ?? '';
-  return isRoomCode(code) ? code : null;
-}
+/** The invite lives after `#`, so browsers never send it to the web server. */
+const inviteFromUrl = (): Invite | null => parseInvite(location.hash);
 
-function setUrlRoom(code: string | null) {
+function setUrlInvite(invite: Invite | null) {
   const url = new URL(location.href);
-  if (code) url.searchParams.set('room', code);
-  else url.searchParams.delete('room');
+  url.hash = invite ? inviteFragment(invite) : '';
+  url.search = ''; // drop links from older versions
   history.replaceState(null, '', url);
 }
+
+const inviteLink = (invite: Invite) => `${location.origin}${location.pathname}${inviteFragment(invite)}`;
 
 /**
  * This tab's player token. It survives reloads, so a player keeps their seat,
@@ -34,15 +36,15 @@ function setUrlRoom(code: string | null) {
  */
 function myToken(): string {
   const saved = load<string>('triface:token', 'session');
-  if (saved) return saved;
+  if (saved && /^[0-9a-f]{32}$/.test(saved)) return saved;
   const token = randomToken();
   save('triface:token', token, 'session');
   return token;
 }
 
-/** Did this tab host room `code`? Then reopening it resumes the game. */
-function hosting(code: string, token: string): boolean {
-  return Boolean(load<HostSnapshot>(hostKey(code))?.seats.some((s) => s.host && s.id === token));
+/** Did this tab host the room? Then reopening it resumes the game. */
+function hosting(invite: Invite, token: string): boolean {
+  return load<HostSnapshot>(hostKey(invite.secret))?.hostToken === token && load(signingKey(invite.secret)) !== null;
 }
 
 export function App() {
@@ -50,19 +52,27 @@ export function App() {
   const [name, setName] = useState(() => load<string>('triface:name') ?? '');
   const [screen, setScreen] = useState<Screen>(() => {
     // An invite link, or a reload mid-game, goes straight to the room once we know your name.
-    const code = roomFromUrl();
+    const invite = inviteFromUrl();
     const named = (load<string>('triface:name') ?? '').trim().length > 0;
-    return code && named ? { kind: 'online', code, host: hosting(code, token) } : { kind: 'home' };
+    return invite && named ? { kind: 'online', invite, host: hosting(invite, token) } : { kind: 'home' };
   });
 
   const home = () => {
-    setUrlRoom(null);
+    setUrlInvite(null);
     setScreen({ kind: 'home' });
   };
 
   if (screen.kind === 'hotseat') return <Hotseat onQuit={home} />;
   if (screen.kind === 'online') {
-    return <OnlineGame code={screen.code} host={screen.host} me={{ token, name: name.trim() }} onQuit={home} />;
+    return (
+      <OnlineGame
+        key={screen.invite.secret}
+        invite={screen.invite}
+        host={screen.host}
+        me={{ token, name: cleanName(name) }}
+        onQuit={home}
+      />
+    );
   }
   return (
     <Home
@@ -71,14 +81,16 @@ export function App() {
         setName(n);
         save('triface:name', n);
       }}
-      onHost={() => {
-        const code = randomCode();
-        setUrlRoom(code);
-        setScreen({ kind: 'online', code, host: true });
+      onHost={async () => {
+        const keys = await generateHostKeys();
+        const invite = { secret: randomSecret(), hostKey: keys.publicKey };
+        save(signingKey(invite.secret), keys.privateJwk);
+        setUrlInvite(invite);
+        setScreen({ kind: 'online', invite, host: true });
       }}
-      onJoin={(code) => {
-        setUrlRoom(code);
-        setScreen({ kind: 'online', code, host: hosting(code, token) });
+      onJoin={(invite) => {
+        setUrlInvite(invite);
+        setScreen({ kind: 'online', invite, host: hosting(invite, token) });
       }}
       onHotseat={() => setScreen({ kind: 'hotseat' })}
     />
@@ -97,14 +109,17 @@ interface HomeProps {
   name: string;
   setName: (name: string) => void;
   onHost: () => void;
-  onJoin: (code: string) => void;
+  onJoin: (invite: Invite) => void;
   onHotseat: () => void;
 }
 
 function Home({ name, setName, onHost, onJoin, onHotseat }: HomeProps) {
-  const [code, setCode] = useState(roomFromUrl() ?? '');
+  const [link, setLink] = useState(() => {
+    const invite = inviteFromUrl();
+    return invite ? inviteLink(invite) : '';
+  });
   const named = name.trim().length > 0;
-  const validCode = isRoomCode(code);
+  const invite = parseInvite(link);
 
   return (
     <main className="setup">
@@ -118,24 +133,25 @@ function Home({ name, setName, onHost, onJoin, onHotseat }: HomeProps) {
 
       <h2>Play online</h2>
       <div className="row">
-        <input
-          value={code}
-          placeholder="Room code"
-          aria-label="Room code"
-          maxLength={5}
-          className="code-input"
-          onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-          onKeyDown={(e) => e.key === 'Enter' && named && validCode && onJoin(code)}
-        />
-        <button disabled={!named || !validCode} onClick={() => onJoin(code)}>
-          Join
-        </button>
-        <span className="muted">or</span>
         <button disabled={!named} onClick={onHost}>
           Host a game
         </button>
       </div>
+      <div className="row">
+        <input
+          value={link}
+          placeholder="…or paste an invite link"
+          aria-label="Invite link"
+          className="link-input"
+          onChange={(e) => setLink(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && named && invite && onJoin(invite)}
+        />
+        <button disabled={!named || !invite} onClick={() => invite && onJoin(invite)}>
+          Join
+        </button>
+      </div>
       {!named && <p className="muted">Enter your name to play online.</p>}
+      {named && link.trim() !== '' && !invite && <p className="error">That doesn't look like a Triface invite link.</p>}
 
       <h2>Play on this device</h2>
       <button className="ghost" onClick={onHotseat}>
@@ -146,12 +162,12 @@ function Home({ name, setName, onHost, onJoin, onHotseat }: HomeProps) {
   );
 }
 
-function OnlineGame({ code, host, me, onQuit }: { code: string; host: boolean; me: Identity; onQuit: () => void }) {
-  const online = useOnline(code, me, host);
+function OnlineGame({ invite, host, me, onQuit }: { invite: Invite; host: boolean; me: Identity; onQuit: () => void }) {
+  const online = useOnline(invite, me, host);
   const [copied, setCopied] = useState(false);
-  const link = `${location.origin}${location.pathname}?room=${code}`;
+  const link = inviteLink(invite);
   const offline = useMemo(() => new Set(online.seats.filter((s) => !s.online).map((s) => s.id)), [online.seats]);
-  const myTurn = online.view ? online.view.players[online.view.current]?.id === me.token : false;
+  const myTurn = online.view ? online.view.players[online.view.current]?.id === online.view.me : false;
 
   useEffect(() => {
     document.title = myTurn ? '● Your turn · Triface' : 'Triface';
@@ -160,7 +176,10 @@ function OnlineGame({ code, host, me, onQuit }: { code: string; host: boolean; m
 
   function quit() {
     if (host && !confirm('Leave this game? You are the host, so the game ends for everyone.')) return;
-    if (host) remove(hostKey(code));
+    if (host) {
+      remove(hostKey(invite.secret));
+      remove(signingKey(invite.secret));
+    }
     onQuit();
   }
 
@@ -176,9 +195,7 @@ function OnlineGame({ code, host, me, onQuit }: { code: string; host: boolean; m
 
   const share = (
     <div className="share">
-      <div>
-        Room <strong className="code">{code}</strong>
-      </div>
+      <div className="muted">Invite link. Only people with it can join.</div>
       <div className="row">
         <input readOnly value={link} aria-label="Invite link" onFocus={(e) => e.target.select()} />
         <button className="ghost" onClick={copy}>
@@ -201,10 +218,10 @@ function OnlineGame({ code, host, me, onQuit }: { code: string; host: boolean; m
   if (online.status === 'connecting') {
     return (
       <main className="setup">
-        <h1>Joining {code}…</h1>
+        <h1>Joining…</h1>
         <p className="muted">
-          Looking for the host. This usually takes a few seconds. If it doesn't connect, check the code and that the
-          host has the game open.
+          Looking for the host. This usually takes a few seconds. If it doesn't connect, check that you have the whole
+          link and that the host has the game open.
         </p>
         <button className="ghost" onClick={onQuit}>
           Cancel
@@ -227,9 +244,17 @@ function OnlineGame({ code, host, me, onQuit }: { code: string; host: boolean; m
             <li key={s.id}>
               <span>
                 {s.name}
-                {s.id === me.token && <span className="muted"> (you)</span>}
+                {s.id === online.you && <span className="muted"> (you)</span>}
               </span>
-              <span className="muted">{s.host ? 'host' : ''}</span>
+              <span className="muted">
+                {s.host ? (
+                  'host'
+                ) : host ? (
+                  <button className="ghost small" onClick={() => online.kick(s.id)} aria-label={`Remove ${s.name}`}>
+                    Remove
+                  </button>
+                ) : null}
+              </span>
             </li>
           ))}
         </ul>

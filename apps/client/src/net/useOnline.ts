@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { joinRoom, type Room } from 'trystero';
+import { joinRoom, selfId } from 'trystero';
 import type { Move, PlayerView } from '@triface/engine';
 import { load, save } from '../storage.ts';
+import { importSigningKey, importVerifyKey, open, seal, type Invite } from './crypto.ts';
 import { HostSession, type HostSnapshot } from './host.ts';
-import type { Outgoing, Seat, ToGuest, ToHost } from './protocol.ts';
+import type { Outgoing, Seat, ToHost } from './protocol.ts';
+import { parseToGuest, parseToHost } from './validate.ts';
 
-/** Shared by everyone running Triface; rooms are separated by their code. */
+/** Shared by everyone running Triface; rooms are separated by their secret. */
 const APP_ID = 'triface-game-romulovm-v1';
 
-export const hostKey = (code: string) => `triface:host:${code}`;
+/** The host's game, saved in its own browser so a reload resumes it. */
+export const hostKey = (secret: string) => `triface:host:${secret}`;
+/** The host's private signing key, saved alongside. */
+export const signingKey = (secret: string) => `triface:hostkey:${secret}`;
 
 export interface Identity {
   token: string;
@@ -20,6 +25,8 @@ export type OnlineStatus = 'connecting' | 'lobby' | 'game' | 'rejected';
 export interface Online {
   status: OnlineStatus;
   seats: Seat[];
+  /** This player's public id. */
+  you: string | null;
   view: PlayerView | null;
   error: string | null;
   setError: (error: string | null) => void;
@@ -27,92 +34,118 @@ export interface Online {
   hostOnline: boolean;
   rejected: string | null;
   start: () => void;
+  kick: (playerId: string) => void;
   move: (move: Move) => void;
 }
 
-type Message = ToHost | ToGuest;
-
 /**
- * Join room `code` as its host or as a guest. The host keeps the real game in a
- * HostSession and saves it locally, so a reload resumes the game.
+ * Join the room behind `invite` as its host or as a guest.
+ *
+ * Only people with the invite link know the room secret, which is both the
+ * room id and the password for Trystero's signaling. The host signs everything
+ * it sends with its private key; guests check each message against the public
+ * key in the link, so another player can't pretend to be the host.
  */
-export function useOnline(code: string, me: Identity, asHost: boolean): Online {
+export function useOnline(invite: Invite, me: Identity, asHost: boolean): Online {
   const [seats, setSeats] = useState<Seat[]>([]);
+  const [you, setYou] = useState<string | null>(null);
   const [view, setView] = useState<PlayerView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rejected, setRejected] = useState<string | null>(null);
   const [hostOnline, setHostOnline] = useState(asHost);
   const [heardFromHost, setHeardFromHost] = useState(asHost);
 
-  const room = useRef<Room | null>(null);
-  const send = useRef<(msg: Message, peer: string) => void>(() => {});
   const session = useRef<HostSession | null>(null);
   /** Host only: send messages, save the game and refresh the host's own screen. */
   const publish = useRef<(out: Outgoing[]) => void>(() => {});
-  const hostPeer = useRef<string | null>(null);
+  /** Guest only: send a message to the host. */
+  const toHost = useRef<((msg: ToHost) => void) | null>(null);
 
   useEffect(() => {
-    const r = joinRoom({ appId: APP_ID }, code);
-    room.current = r;
+    let live = true;
+    const r = joinRoom({ appId: APP_ID, password: invite.secret }, invite.secret);
     const action = r.makeAction('msg');
     type Payload = Parameters<typeof action.send>[0];
-    // Messages are plain JSON; Trystero's payload type just can't see that through our interfaces.
-    send.current = (msg, peer) => void action.send(msg as unknown as Payload, { target: peer });
-    let onMsg: (msg: Message, peerId: string) => void = () => {};
-    action.onMessage = (data, { peerId }) => onMsg(data as unknown as Message, peerId);
+    const send = (data: unknown, peer: string) => void action.send(data as Payload, { target: peer });
+    // Handle messages strictly in arrival order, even though signing and checking are async.
+    let queue = Promise.resolve();
+    const inOrder = (task: () => Promise<void>) => {
+      queue = queue.then(task).catch((e: unknown) => console.error('Triface network error', e));
+    };
 
     if (asHost) {
-      const host = new HostSession(me.token, me.name, load<HostSnapshot>(hostKey(code)) ?? undefined);
+      const host = new HostSession(me.token, me.name, load<HostSnapshot>(hostKey(invite.secret)));
       session.current = host;
+      const jwk = load<JsonWebKey>(signingKey(invite.secret));
+      const key = jwk ? importSigningKey(jwk) : Promise.reject(new Error('Missing host key'));
       publish.current = (out) => {
-        for (const o of out) send.current(o.msg, o.peer);
-        save(hostKey(code), host.snapshot());
+        save(hostKey(invite.secret), host.snapshot());
         setSeats([...host.seats]);
+        setYou(host.hostId);
         setView(host.viewFor(me.token));
+        inOrder(async () => {
+          const k = await key;
+          for (const o of out) send(await seal(k, o.peer, o.msg), o.peer);
+        });
       };
       publish.current([]);
-      onMsg = (msg, peerId) => {
+      action.onMessage = (data, { peerId }) => {
+        const msg = parseToHost(data);
+        if (!msg) return; // malformed or hostile: ignore
         if (msg.t === 'hello') publish.current(host.hello(peerId, msg));
-        else if (msg.t === 'move') publish.current(host.move(peerId, msg.move).out);
+        else publish.current(host.move(peerId, msg.move).out);
       };
+      // Prove to each newcomer that we're the host, so it knows where to send its token.
+      r.onPeerJoin = (peerId) => publish.current([{ peer: peerId, msg: { t: 'welcome' } }]);
       r.onPeerLeave = (peerId) => publish.current(host.leave(peerId));
     } else {
+      const verifyKey = importVerifyKey(invite.hostKey);
+      let hostPeer: string | null = null;
       const hello: ToHost = { t: 'hello', token: me.token, name: me.name };
-      // Every peer gets a hello; only the host answers.
-      r.onPeerJoin = (peerId) => send.current(hello, peerId);
+      toHost.current = (msg) => hostPeer && send(msg, hostPeer);
+      // Our token goes only to the peer that proves it's the host (see `welcome`).
       r.onPeerLeave = (peerId) => {
-        if (peerId === hostPeer.current) setHostOnline(false);
+        if (peerId === hostPeer) setHostOnline(false);
       };
-      onMsg = (msg, peerId) => {
-        if (msg.t === 'hello' || msg.t === 'move') return; // other guests talking to the host
-        hostPeer.current = peerId;
-        setHostOnline(true);
-        setHeardFromHost(true);
-        if (msg.t === 'lobby') {
-          setSeats(msg.seats);
-          setView(null);
-        } else if (msg.t === 'game') {
-          setSeats(msg.seats);
-          setView(msg.view);
-        } else if (msg.t === 'error') {
-          setError(msg.message);
-        } else {
-          setRejected(msg.reason);
-        }
-      };
+      action.onMessage = (data, { peerId }) =>
+        inOrder(async () => {
+          const msg = parseToGuest(await open(await verifyKey, selfId, data));
+          if (!msg || !live) return; // not from the host, not for us, or malformed
+          hostPeer = peerId;
+          setHostOnline(true);
+          if (msg.t === 'welcome') {
+            send(hello, peerId);
+            return;
+          }
+          setHeardFromHost(true);
+          if (msg.t === 'lobby') {
+            setSeats(msg.seats);
+            setYou(msg.you);
+            setView(null);
+          } else if (msg.t === 'game') {
+            setSeats(msg.seats);
+            setYou(msg.view.me);
+            setView(msg.view);
+          } else if (msg.t === 'error') {
+            setError(msg.message);
+          } else {
+            setRejected(msg.reason);
+          }
+        });
     }
 
     return () => {
+      live = false;
       void r.leave();
-      room.current = null;
       session.current = null;
-      hostPeer.current = null;
+      toHost.current = null;
     };
-  }, [code, me.token, me.name, asHost]);
+  }, [invite.secret, invite.hostKey, me.token, me.name, asHost]);
 
   return {
     status: rejected ? 'rejected' : !heardFromHost ? 'connecting' : view ? 'game' : 'lobby',
     seats,
+    you,
     view,
     error,
     setError,
@@ -127,6 +160,15 @@ export function useOnline(code: string, me: Identity, asHost: boolean): Online {
         setError((e as Error).message);
       }
     },
+    kick: (playerId) => {
+      const host = session.current;
+      if (!host) return;
+      try {
+        publish.current(host.kick(playerId));
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
     move: (move) => {
       setError(null);
       const host = session.current;
@@ -134,8 +176,8 @@ export function useOnline(code: string, me: Identity, asHost: boolean): Online {
         const { error: err, out } = host.move(null, move);
         if (err) setError(err);
         else publish.current(out);
-      } else if (hostPeer.current) {
-        send.current({ t: 'move', move }, hostPeer.current);
+      } else if (toHost.current) {
+        toHost.current({ t: 'move', move });
       } else {
         setError('Not connected to the host.');
       }

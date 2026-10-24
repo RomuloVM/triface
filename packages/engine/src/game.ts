@@ -257,6 +257,10 @@ function apply(s: GameState, playerId: string, move: Move): string | null {
       if (phase.kind !== 'comboDiscard') return 'There is nothing to skip.';
       advance(s, phase.then);
       return null;
+
+    default:
+      // Moves can arrive from the network, so the type is not guaranteed.
+      return 'Unknown move.';
   }
 }
 
@@ -268,17 +272,23 @@ export function applyMove(state: GameState, playerId: string, move: Move): MoveR
 }
 
 /** What one player is allowed to see: their own hand, everyone else's hand size. */
-export interface PlayerView extends Omit<GameState, 'players' | 'deck' | 'seed'> {
+/** The turn phase as one player sees it: a drawn card is only identified to the player who drew it. */
+export type PublicPhase = Exclude<Phase, { kind: 'drawn' }> | { kind: 'drawn'; cardId?: number };
+
+export interface PlayerView extends Omit<GameState, 'players' | 'deck' | 'seed' | 'phase'> {
   me: string;
+  phase: PublicPhase;
   players: (Omit<PlayerState, 'hand'> & { handCount: number; hand?: number[] })[];
   deckCount: number;
 }
 
 export function playerView(state: GameState, playerId: string): PlayerView {
-  const { players, deck, seed: _seed, ...rest } = state;
+  const { players, deck, seed: _seed, phase, ...rest } = state;
+  const drawer = players[state.current]?.id;
   return {
     ...structuredClone(rest),
     me: playerId,
+    phase: phase.kind === 'drawn' && drawer !== playerId ? { kind: 'drawn' } : { ...phase },
     players: players.map(({ hand, ...p }) => ({
       ...p,
       handCount: hand.length,
